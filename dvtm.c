@@ -686,6 +686,8 @@ resize_client(Client *c, int w, int h) {
 
 static void
 resize(Client *c, int x, int y, int w, int h) {
+	w = MAX(w, 1);
+	h = MAX(h, 1);
 	resize_client(c, w, h);
 	move_client(c, x, y);
 }
@@ -960,7 +962,8 @@ setup(void) {
 	mouse_setup();
 	raw();
 	vt_init();
-	vt_keytable_set(keytable, LENGTH(keytable));
+	if (LENGTH(keytable))
+		vt_keytable_set(keytable, LENGTH(keytable));
 	for (unsigned int i = 0; i < LENGTH(colors); i++) {
 		if (COLORS == 256) {
 			if (colors[i].fg256)
@@ -1079,7 +1082,7 @@ create(const char *args[]) {
 		char name[PATH_MAX];
 		strncpy(name, args[0], sizeof(name));
 		name[sizeof(name)-1] = '\0';
-		strncpy(c->title, basename(name), sizeof(c->title));
+		strncpy(c->title, basename(name), sizeof(c->title) - 1);
 	} else {
 		c->cmd = shell;
 	}
@@ -1126,7 +1129,9 @@ copymode(const char *args[]) {
 	argv[1] = argline;
 
 	char *cwd = getcwd_by_pid(sel);
-	if (vt_forkpty(sel->editor, args[0], argv, cwd, NULL, to, from) < 0) {
+	pid_t pid = vt_forkpty(sel->editor, args[0], argv, cwd, NULL, to, from);
+	free(cwd);
+	if (pid < 0) {
 		vt_destroy(sel->editor);
 		sel->editor = NULL;
 		return;
