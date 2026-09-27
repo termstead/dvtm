@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+    env:
+      CC: ${{ matrix.cc }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libncurses-dev python3-pexpect
+      - name: Build
+        run: make
+        env:
+          CFLAGS: -O2 -Wall -Wextra -Wno-unused-parameter -Wno-unused-function -Werror
+      - name: Test
+        run: make test
+      - name: Test with ASan and UBSan
+        run: make clean && make && make test
+        env:
+          CFLAGS: -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer
+          LDFLAGS: -fsanitize=address,undefined
+
+  fuzz:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libncurses-dev clang libclang-rt-18-dev
+      - run: make fuzz-vt
+      - run: ./fuzz-vt -max_total_time=120 -max_len=16384
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes
+          path: crash-*
+
+  openbsd:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: vmactions/openbsd-vm@v1
+        with:
+          usesh: true
+          prepare: pkg_add gmake
+          run: gmake CPPFLAGS=
