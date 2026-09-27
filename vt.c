@@ -373,7 +373,7 @@ static void buffer_resize(Buffer *b, int rows, int cols)
 	Row *lines = b->lines;
 
 	if (b->rows != rows) {
-		if (b->curs_row >= lines + rows) {
+		if (lines && b->curs_row >= lines + rows) {
 			/* scroll up instead of simply chopping off bottom */
 			buffer_scroll(b, (b->curs_row - b->lines) - rows + 1);
 		}
@@ -418,14 +418,14 @@ static void buffer_resize(Buffer *b, int rows, int cols)
 		}
 
 		/* prepare for backfill */
-		if (b->curs_row >= b->scroll_bot - 1) {
+		if (b->lines && b->curs_row >= b->scroll_bot - 1) {
 			deltarows = b->lines + rows - b->curs_row - 1;
 			if (deltarows > b->scroll_above)
 				deltarows = b->scroll_above;
 		}
 	}
 
-	b->curs_row += lines - b->lines;
+	b->curs_row = b->lines ? lines + (b->curs_row - b->lines) : lines;
 	b->scroll_top = lines;
 	b->scroll_bot = lines + rows;
 	b->lines = lines;
@@ -735,7 +735,7 @@ static void interpret_csi_ed(Vt *t, int param[], int pcount)
 	} else if (pcount && param[0] == 1) {
 		start = b->lines;
 		end = b->curs_row;
-		row_set(b->curs_row, 0, b->curs_col + 1, b);
+		row_set(b->curs_row, 0, MIN(b->curs_col + 1, b->cols), b);
 	} else {
 		row_set(b->curs_row, b->curs_col, b->cols - b->curs_col, b);
 		start = b->curs_row + 1;
@@ -816,7 +816,7 @@ static void interpret_csi_el(Vt *t, int param[], int pcount)
 	Buffer *b = t->buffer;
 	switch (pcount ? param[0] : 0) {
 	case 1:
-		row_set(b->curs_row, 0, b->curs_col + 1, b);
+		row_set(b->curs_row, 0, MIN(b->curs_col + 1, b->cols), b);
 		break;
 	case 2:
 		row_set(b->curs_row, 0, b->cols, b);
@@ -1007,8 +1007,7 @@ static void interpret_csi(Vt *t)
 		} else if (isdigit((unsigned char)*p)) {
 			if (param_count == 0)
 				csiparam[param_count++] = 0;
-			csiparam[param_count - 1] *= 10;
-			csiparam[param_count - 1] += *p - '0';
+			csiparam[param_count - 1] = MIN(csiparam[param_count - 1] * 10 + (*p - '0'), 65535);
 		}
 	}
 
@@ -1081,7 +1080,7 @@ static void interpret_csi(Vt *t)
 	case 'g': /* TBC: tabulation clear */
 		switch (param_count ? csiparam[0] : 0) {
 		case 0:
-			b->tabs[b->curs_col] = false;
+			b->tabs[MIN(b->curs_col, b->cols - 1)] = false;
 			break;
 		case 3:
 			memset(b->tabs, 0, sizeof(*b->tabs) * b->maxcols);
@@ -1228,7 +1227,7 @@ static void try_interpret_escape_seq(Vt *t)
 		interpret_csi_nel(t);
 		goto handled;
 	case 'H': /* HTS: horizontal tab set */
-		t->buffer->tabs[t->buffer->curs_col] = true;
+		t->buffer->tabs[MIN(t->buffer->curs_col, t->buffer->cols - 1)] = true;
 		goto handled;
 	default:
 		goto cancel;
@@ -1372,6 +1371,8 @@ static void put_wc(Vt *t, wchar_t wc)
 			width = 1;
 		}
 		Buffer *b = t->buffer;
+		if (width > b->cols)
+			width = 1;
 		Cell blank_cell = { L'\0', build_attrs(b->curattrs), b->curfg, b->curbg };
 		if (width == 2 && b->curs_col == b->cols - 1) {
 			b->curs_row->cells[b->curs_col++] = blank_cell;
@@ -1538,7 +1539,7 @@ void vt_draw(Vt *t, WINDOW *win, int srow, int scol)
 			if (is_utf8 && cell->text >= 128) {
 				char buf[MB_CUR_MAX + 1];
 				size_t len = wcrtomb(buf, cell->text, NULL);
-				if (len > 0) {
+				if (len != (size_t)-1) {
 					waddnstr(win, buf, len);
 					if (wcwidth(cell->text) > 1)
 						j++;
@@ -1958,7 +1959,7 @@ size_t vt_content_get(Vt *t, char **buf, bool colored)
 			}
 			if (cell->text) {
 				len = wcrtomb(s, cell->text, &ps);
-				if (len > 0)
+				if (len != (size_t)-1)
 					s += len;
 				last_non_space = s;
 			} else if (len) {
