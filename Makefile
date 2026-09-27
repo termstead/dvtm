@@ -25,6 +25,13 @@ man:
 		sed -e "s/VERSION/${VERSION}/" "$$m" | mandoc -W warning -T utf8 -T xhtml -O man=%N.%S.html -O style=mandoc.css 1> "$$m.html" || true; \
 	done
 
+test: all
+	python3 test/test_dvtm.py
+
+fuzz-vt: config.mk vt.c vt.h test/fuzz-vt.c
+	clang ${CFLAGS} -g -O1 -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=undefined \
+		test/fuzz-vt.c ${LDFLAGS} ${LIBS} -o $@
+
 debug: clean
 	@$(MAKE) CFLAGS='${DEBUG_CFLAGS}'
 
@@ -32,6 +39,7 @@ clean:
 	@echo cleaning
 	@rm -f dvtm
 	@rm -f dvtm-editor
+	@rm -f fuzz-vt
 
 dist: clean
 	@echo creating dist tarball
@@ -61,4 +69,4 @@ uninstall:
 	@echo removing manual page from ${DESTDIR}${MANPREFIX}/man1
 	@rm -f ${DESTDIR}${MANPREFIX}/man1/dvtm.1
 
-.PHONY: all clean dist install uninstall debug
+.PHONY: all clean dist install uninstall debug test

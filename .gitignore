@@ -3,3 +3,6 @@
 /dvtm-editor
 *.css
 *.html
+/fuzz-vt
+crash-*
+__pycache__/
