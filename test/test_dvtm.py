@@ -61,6 +61,12 @@ class DvtmTest(unittest.TestCase):
         time.sleep(0.5)
         self.sh('echo id-$DVTM_WINDOW_ID', 'id-1')
 
+    def test_truecolor(self):
+        self.sh('echo $COLORTERM-$((6*7))', 'truecolor-42')
+        # 24-bit red is shown as the closest color the outer terminal has
+        self.p.send("printf '\\033[38;2;255;0;0mred-%d\\n' $((6*7))\r")
+        self.p.expect_exact('\x1b[31mred-42')
+
     def test_cmd_fifo(self):
         with open(self.cmdfifo, 'w') as f:
             f.write("create 'echo from-$((6*7)); sleep 60' title-x\n")

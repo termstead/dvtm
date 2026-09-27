@@ -25,8 +25,12 @@ man:
 		sed -e "s/VERSION/${VERSION}/" "$$m" | mandoc -W warning -T utf8 -T xhtml -O man=%N.%S.html -O style=mandoc.css 1> "$$m.html" || true; \
 	done
 
-test: all
+test: all test-vt
+	./test-vt
 	python3 test/test_dvtm.py
+
+test-vt: config.mk vt.c vt.h test/test-vt.c
+	${CC} ${CFLAGS} test/test-vt.c ${LDFLAGS} ${LIBS} -o $@
 
 fuzz-vt: config.mk vt.c vt.h test/fuzz-vt.c
 	clang ${CFLAGS} -g -O1 -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=undefined \
@@ -40,6 +44,7 @@ clean:
 	@rm -f dvtm
 	@rm -f dvtm-editor
 	@rm -f fuzz-vt
+	@rm -f test-vt
 
 dist: clean
 	@echo creating dist tarball
