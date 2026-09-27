@@ -91,7 +91,7 @@ typedef struct {
 	short bg;
 	short fg256;
 	short bg256;
-	short pair;
+	int pair;
 } Color;
 
 typedef struct {
@@ -965,7 +965,7 @@ setup(void) {
 	if (LENGTH(keytable))
 		vt_keytable_set(keytable, LENGTH(keytable));
 	for (unsigned int i = 0; i < LENGTH(colors); i++) {
-		if (COLORS == 256) {
+		if (COLORS >= 256) {
 			if (colors[i].fg256)
 				colors[i].fg = colors[i].fg256;
 			if (colors[i].bg256)
