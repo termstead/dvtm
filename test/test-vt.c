@@ -94,6 +94,16 @@ static void test_term(const char *name, int red, int palette196, int rgb123, int
 	s = content(t);
 	CHECK(strstr(s, "\033[39m\033[49mxyz"));
 
+	/* colon separated sub-parameters (ITU T.416 form) */
+	feed(t, "\033[H\033[0m\033[38:2::255:0:0ma\033[38:2:0:0:255mb\033[48:5:196mc"
+	        "\033[0;4:3;58:2::1:2:3;38;5;2md\033[4:0me");
+	s = content(t);
+	CHECK(strstr(s, "\033[38;2;255;0;0m\033[49ma"));
+	CHECK(strstr(s, "\033[38;2;0;0;255mb"));
+	CHECK(strstr(s, "\033[48;5;196mc"));
+	CHECK(strstr(s, "\033[0;4m\033[38;5;2m\033[49md"));
+	CHECK(strstr(s, "\033[0m\033[38;5;2m\033[49me"));
+
 	/* cycle through many pairs, the reserved one must survive */
 	char seq[64];
 	for (int i = 0; i < 70000; i += 7) {
@@ -127,16 +137,29 @@ int main(void)
 	fputs("dvtm-test-direct|direct color,\n"
 	      "\tuse=xterm-256color, colors#0x1000000, pairs#0x10000, RGB,\n"
 	      "\tsetaf=\\E[%?%p1%{8}%<%t3%p1%d%e38;2;%p1%{65536}%/%d;%p1%{256}%/%{255}%&%d;%p1%{255}%&%d%;m,\n"
-	      "\tsetab=\\E[%?%p1%{8}%<%t4%p1%d%e48;2;%p1%{65536}%/%d;%p1%{256}%/%{255}%&%d;%p1%{255}%&%d%;m,\n", tic);
+	      "\tsetab=\\E[%?%p1%{8}%<%t4%p1%d%e48;2;%p1%{65536}%/%d;%p1%{256}%/%{255}%&%d;%p1%{255}%&%d%;m,\n"
+	      /* like xterm-direct256: colors below 256 are the terminal's palette */
+	      "dvtm-test-direct256|direct color with 256 indexed colors,\n"
+	      "\tuse=xterm-256color, colors#0x1000000, pairs#0x10000, RGB,\n"
+	      "\tsetaf=\\E[%?%p1%{256}%<%t38;5;%p1%d%e38;2;%p1%{65536}%/%d;%p1%{256}%/%{255}%&%d;%p1%{255}%&%d%;m,\n"
+	      "\tsetab=\\E[%?%p1%{256}%<%t48;5;%p1%d%e48;2;%p1%{65536}%/%d;%p1%{256}%/%{255}%&%d;%p1%{255}%&%d%;m,\n", tic);
 	bool direct = pclose(tic) == 0;
+	snprintf(cmd, sizeof cmd, "tic -x -o %s dvtm.info 2>/dev/null", dir);
+	bool bundled = system(cmd) == 0;
 	setenv("TERMINFO", dir, 1);
 
 	test_term("xterm", COLOR_RED, COLOR_RED, COLOR_BLACK, COLOR_BLACK);
 	test_term("xterm-256color", 196, 196, 16, 16);
-	if (direct)
-		test_term("dvtm-test-direct", 0xff0000, 0xff0000, 0x010203, 8);
-	else
+	if (direct) {
+		/* RGB values which would collide with palette colors are nudged */
+		test_term("dvtm-test-direct", 0xff0000, 0xff0000, 0x010203, 0x000101);
+		test_term("dvtm-test-direct256", 0xff0000, 196, 0x010203, 0x000101);
+	} else
 		fprintf(stderr, "tic failed, direct color not tested\n");
+	if (bundled)
+		test_term("dvtm-xterm-direct", 0xff0000, 196, 0x010203, 0x000101);
+	else
+		fprintf(stderr, "tic dvtm.info failed, bundled entry not tested\n");
 
 	snprintf(cmd, sizeof cmd, "rm -rf %s", dir);
 	if (system(cmd))

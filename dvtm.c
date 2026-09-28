@@ -33,9 +33,7 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <pwd.h>
-#if defined __CYGWIN__ || defined __sun
-# include <termios.h>
-#endif
+#include <termios.h>
 #include "vt.h"
 
 #ifdef PDCURSES
@@ -950,11 +948,90 @@ getshell(void) {
 	return "/bin/sh";
 }
 
+/* ask the terminal for its default colors, applications query them to pick a light or dark theme */
+static void
+querycolors(void) {
+	struct termios old, raw;
+	if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO) || tcgetattr(STDIN_FILENO, &old))
+		return;
+	raw = old;
+	raw.c_lflag &= ~(ICANON | ECHO);
+	raw.c_cc[VMIN] = 0;
+	raw.c_cc[VTIME] = 0;
+	tcsetattr(STDIN_FILENO, TCSANOW, &raw);
+	/* nearly every terminal answers the device attributes query (ESC [ c) which comes last */
+	static const char query[] = "\033]10;?\033\\\033]11;?\033\\\033[c";
+	char buf[512];
+	size_t len = 0;
+	if (write(STDOUT_FILENO, query, sizeof query - 1) == sizeof query - 1) {
+		for (;;) {
+			fd_set rd;
+			FD_ZERO(&rd);
+			FD_SET(STDIN_FILENO, &rd);
+			if (select(STDIN_FILENO + 1, &rd, NULL, NULL, &(struct timeval){ .tv_usec = 500000 }) <= 0)
+				break;
+			ssize_t n = read(STDIN_FILENO, buf + len, sizeof buf - 1 - len);
+			if (n <= 0)
+				break;
+			len += n;
+			buf[len] = '\0';
+			char *da = strstr(buf, "\033[?");
+			if ((da && strchr(da, 'c')) || len == sizeof buf - 1)
+				break;
+		}
+	}
+	tcsetattr(STDIN_FILENO, TCSANOW, &old);
+	buf[len] = '\0';
+
+	char *colors[2] = { strstr(buf, "\033]10;"), strstr(buf, "\033]11;") };
+	for (int i = 0; i < 2; i++) {
+		if (colors[i]) {
+			colors[i] += strlen("\033]10;");
+			colors[i][strcspn(colors[i], "\a\033")] = '\0';
+		}
+	}
+	vt_default_colors_reported(colors[0], colors[1]);
+}
+
+/* start curses, with a direct color variant of $TERM if $COLORTERM announces 24-bit color support */
+static void
+initterm(void) {
+	const char *term = getenv("TERM"), *colorterm = getenv("COLORTERM"), *truecolor = getenv("DVTM_TRUECOLOR");
+	if (term && strlen(term) < 64 && !strstr(term, "direct") && colorterm &&
+	    (!strcmp(colorterm, "truecolor") || !strcmp(colorterm, "24bit")) &&
+	    !(truecolor && !strcmp(truecolor, "0"))) {
+		/* terminals whose keys match xterm's, they can use xterm-direct256 which
+		 * keeps all 256 palette colors while most *-direct entries keep only 8 */
+		static const char *xtermlike[] = { "xterm", "alacritty", "foot", "wezterm", "rio", "contour" };
+		bool xterm = false;
+		for (unsigned int i = 0; i < LENGTH(xtermlike); i++)
+			xterm |= !strncmp(term, xtermlike[i], strlen(xtermlike[i]));
+		char base[64], names[6][80];
+		snprintf(base, sizeof base, "%s", term);
+		char *suffix = strstr(base, "-256color");
+		if (suffix)
+			*suffix = '\0';
+		/* candidates in order of preference */
+		snprintf(names[0], sizeof names[0], "%s-direct256", base);
+		snprintf(names[1], sizeof names[1], "%s-direct16", base);
+		snprintf(names[2], sizeof names[2], "%s", xterm ? "xterm-direct256" : "");
+		snprintf(names[3], sizeof names[3], "%s-direct", base);
+		snprintf(names[4], sizeof names[4], "%s-direct", !strncmp(term, "xterm-", 6) ? term + 6 : "");
+		snprintf(names[5], sizeof names[5], "%s", xterm ? "dvtm-xterm-direct" : "");
+		for (unsigned int i = 0; i < LENGTH(names); i++) {
+			if (names[i][0] && names[i][0] != '-' && newterm(names[i], stdout, stdin))
+				return;
+		}
+	}
+	initscr();
+}
+
 static void
 setup(void) {
 	shell = getshell();
 	setlocale(LC_CTYPE, "");
-	initscr();
+	querycolors();
+	initterm();
 	start_color();
 	noecho();
 	nonl();

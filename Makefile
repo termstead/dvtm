@@ -29,6 +29,9 @@ test: all test-vt
 	./test-vt
 	python3 test/test_dvtm.py
 
+test-terminals: all
+	python3 test/test_terminals.py
+
 test-vt: config.mk vt.c vt.h test/test-vt.c
 	${CC} ${CFLAGS} test/test-vt.c ${LDFLAGS} ${LIBS} -o $@
 
@@ -64,7 +67,7 @@ install: all
 		chmod 644 "${DESTDIR}${MANPREFIX}/man1/$$m"; \
 	done
 	@echo installing terminfo description
-	@TERMINFO=${TERMINFO} tic -s dvtm.info
+	@TERMINFO=${TERMINFO} tic -x -s dvtm.info
 
 uninstall:
 	@for b in ${BIN}; do \
@@ -74,4 +77,4 @@ uninstall:
 	@echo removing manual page from ${DESTDIR}${MANPREFIX}/man1
 	@rm -f ${DESTDIR}${MANPREFIX}/man1/dvtm.1
 
-.PHONY: all clean dist install uninstall debug test
+.PHONY: all clean dist install uninstall debug test test-terminals

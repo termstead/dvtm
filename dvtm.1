@@ -285,6 +285,26 @@ within the client windows. 24-bit colors are passed through to terminals
 with direct color support (terminfo
 .Li RGB
 capability) and mapped to the closest available color otherwise.
+If
+.Ev COLORTERM
+is set to
+.Li truecolor
+or
+.Li 24bit
+when dvtm starts and the
+.Ev TERM
+description lacks direct color support, a direct color variant such as
+.Li xterm-direct256
+is used for the output instead, falling back to dvtm's own
+.Li dvtm-xterm-direct
+for xterm compatible terminals.
+.
+.It Ev DVTM_TRUECOLOR
+Set to
+.Li 0
+to disable the above and use the
+.Ev TERM
+description as is.
 .
 .It Ev DVTM_EDITOR
 When entering the copymode dvtm pipes the whole scroll back buffer to
