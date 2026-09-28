@@ -1102,6 +1102,10 @@ static void interpret_csi(Vt *t)
 		if (param_count == 1 && csiparam[0] == 6)
 			send_curs(t);
 		break;
+	case 'c':
+		if (t->ebuf[1] != '>' && t->ebuf[1] != '=' && (param_count == 0 || csiparam[0] == 0))
+			vt_write(t, "\e[?6c", 5);
+		break;
 	default:
 		break;
 	}

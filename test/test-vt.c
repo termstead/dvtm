@@ -1,5 +1,6 @@
 /* Unit tests for the terminal emulator's color handling. */
 #include <locale.h>
+#include <sys/socket.h>
 #include "../vt.c"
 
 static int failures;
@@ -112,6 +113,30 @@ static void test_term(const char *name, int red, int palette196, int rgb123, int
 	fclose(in);
 }
 
+static void test_device_attributes(void)
+{
+	term = "DA";
+	const char *queries[] = { "\033[c", "\033[0c", "\033[>c", "\033[=c" };
+	const char *replies[] = { "\033[?6c", "\033[?6c", "", "" };
+	for (size_t i = 0; i < LENGTH(queries); i++) {
+		int fds[2];
+		if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds))
+			abort();
+		Vt *t = vt_create(5, 10, 0);
+		t->pty = fds[0];
+		if (write(fds[1], queries[i], strlen(queries[i])) != (ssize_t)strlen(queries[i]))
+			abort();
+		vt_process(t);
+		fcntl(fds[1], F_SETFL, O_NONBLOCK);
+		char buf[16] = "";
+		ssize_t len = read(fds[1], buf, sizeof buf - 1);
+		buf[len > 0 ? len : 0] = '\0';
+		CHECK(!strcmp(buf, replies[i]));
+		close(fds[1]);
+		vt_destroy(t);
+	}
+}
+
 int main(void)
 {
 	setlocale(LC_CTYPE, "C.UTF-8");
@@ -131,6 +156,7 @@ int main(void)
 	bool direct = pclose(tic) == 0;
 	setenv("TERMINFO", dir, 1);
 
+	test_device_attributes();
 	test_term("xterm", COLOR_RED, COLOR_RED, COLOR_BLACK, COLOR_BLACK);
 	test_term("xterm-256color", 196, 196, 16, 16);
 	if (direct)
