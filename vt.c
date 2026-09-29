@@ -1124,8 +1124,8 @@ static void interpret_csi(Vt *t)
 			send_curs(t);
 		break;
 	case 'c': /* primary device attributes, answer as a VT100 with advanced video */
-		if (t->ebuf[1] != '>' && (param_count == 0 || csiparam[0] == 0))
-			vt_write(t, "\033[?1;2c", 7);
+		if (t->ebuf[1] != '>' && t->ebuf[1] != '=' && (param_count == 0 || csiparam[0] == 0))
+			vt_write(t, "[?1;2c", 7);
 		break;
 	default:
 		break;
