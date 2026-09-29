@@ -35,6 +35,7 @@ void vt_shutdown(void);
 
 void vt_keytable_set(char const * const keytable_overlay[], int count);
 void vt_default_colors_set(Vt*, attr_t attrs, int fg, int bg);
+void vt_default_colors_reported(const char *fg, const char *bg);
 void vt_title_handler_set(Vt*, vt_title_handler_t);
 void vt_urgent_handler_set(Vt*, vt_urgent_handler_t);
 void vt_data_set(Vt*, void *);

@@ -29,6 +29,14 @@ jobs:
           CFLAGS: -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer
           LDFLAGS: -fsanitize=address,undefined
 
+  terminals:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libncurses-dev ncurses-term xvfb x11-apps libgl1-mesa-dri xterm kitty alacritty tmux
+      - run: make
+      - run: make test-terminals
+
   fuzz:
     runs-on: ubuntu-24.04
     steps:

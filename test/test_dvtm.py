@@ -2,6 +2,7 @@
 import os
 import shutil
 import stat
+import subprocess
 import tempfile
 import time
 import unittest
@@ -13,6 +14,15 @@ MOD = '\x07'  # ^G
 
 
 class DvtmTest(unittest.TestCase):
+    # per test changes to the environment dvtm is started with
+    ENV = {
+        'test_auto_direct_color': {'TERM': 'xterm-256color',
+                                   'COLORTERM': 'truecolor'},
+        'test_auto_direct_color_disabled': {'TERM': 'xterm-256color',
+                                            'COLORTERM': 'truecolor',
+                                            'DVTM_TRUECOLOR': '0'},
+    }
+
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.cmdfifo = os.path.join(self.tmp, 'cmd')
@@ -24,14 +34,24 @@ class DvtmTest(unittest.TestCase):
             f.write('#!/bin/sh\nsleep 1.1\neval f=\\${$#}\n'
                     'echo "echo pasted-\\$((6*7))" > "$f"\n')
         os.chmod(self.editor, stat.S_IRWXU)
+        # dvtm's own terminfo entries, including the direct color fallback
+        subprocess.run(['tic', '-x', '-o', self.tmp,
+                        os.path.join(ROOT, 'dvtm.info')], check=True)
         env = dict(os.environ, SHELL='/bin/sh', PS1='$ ', ENV='', TERM='xterm',
-                   DVTM_EDITOR=self.editor,
+                   COLORTERM='', DVTM_TRUECOLOR='', DVTM_EDITOR=self.editor,
+                   TERMINFO=self.tmp,
                    PATH=ROOT + os.pathsep + os.environ['PATH'])
+        env.update(self.ENV.get(self._testMethodName, {}))
         cmd = (f'exec {ROOT}/dvtm -c {self.cmdfifo} -s {self.status} '
                f'2>{self.stderr}')
         self.p = pexpect.spawn('/bin/sh', ['-c', cmd], env=env,
                                dimensions=(24, 80), encoding='utf-8',
                                timeout=10)
+        if self._testMethodName == 'test_color_query':
+            # play the outer terminal answering dvtm's startup queries
+            self.p.expect_exact('\x1b[c')
+            self.p.send('\x1b]10;rgb:dddd/eeee/ffff\x1b\\'
+                        '\x1b]11;rgb:1111/2222/3333\x07\x1b[?62;22c')
         self.p.expect_exact('$ ')
 
     def tearDown(self):
@@ -66,6 +86,30 @@ class DvtmTest(unittest.TestCase):
         # 24-bit red is shown as the closest color the outer terminal has
         self.p.send("printf '\\033[38;2;255;0;0mred-%d\\n' $((6*7))\r")
         self.p.expect_exact('\x1b[31mred-42')
+
+    def test_auto_direct_color(self):
+        # $COLORTERM makes dvtm use a direct color variant of xterm-256color
+        self.p.send("printf '\\033[38;2;255;0;1mred-%d\\n' $((6*7))\r")
+        self.p.expect(r'\x1b\[38[;:]2[;:]+255[;:]0[;:]1mred-42')
+
+    def test_auto_direct_color_disabled(self):
+        self.p.send("printf '\\033[38;2;255;0;1mred-%d\\n' $((6*7))\r")
+        self.p.expect_exact('\x1b[38;5;196mred-42')
+
+    def test_color_query(self):
+        # programs inside dvtm get the outer terminal's colors
+        self.sh("stty raw -echo; printf '\\033]11;?\\007'; "
+                "dd bs=1 count=25 2>/dev/null | tr -d '\\033'; stty sane; echo",
+                ']11;rgb:1111/2222/3333\\')
+        self.sh("stty raw -echo; printf '\\033]10;?\\007'; "
+                "dd bs=1 count=25 2>/dev/null | tr -d '\\033'; stty sane; echo",
+                ']10;rgb:dddd/eeee/ffff\\')
+
+    def test_device_attributes(self):
+        # answered so nested programs, like dvtm itself, need not wait
+        self.sh("stty raw -echo; printf '\\033[c'; "
+                "dd bs=1 count=7 2>/dev/null | tr -d '\\033'; stty sane; echo",
+                '[?1;2c')
 
     def test_cmd_fifo(self):
         with open(self.cmdfifo, 'w') as f:

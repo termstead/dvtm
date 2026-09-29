@@ -84,9 +84,12 @@
 #define COLOR_RGB 0x1000000
 #define RGB(r, g, b) (COLOR_RGB | (r) << 16 | (g) << 8 | (b))
 
-static bool is_utf8, has_default_colors, has_direct_colors;
+static bool is_utf8, has_default_colors;
+/* for direct color terminals the number of colors still taken from their palette */
+static int direct_palette;
 static int color_pairs_reserved, default_fg, default_bg;
 static char vt_term[32];
+static char reported_colors[2][64]; /* answers to OSC 10/11 queries for the default fg/bg */
 
 typedef struct {
 	wchar_t text;
@@ -624,7 +627,7 @@ static bool is_valid_csi_ender(int c)
 }
 
 /* interprets a 'set attribute' (SGR) CSI escape sequence */
-static void interpret_csi_sgr(Vt *t, int param[], int pcount)
+static void interpret_csi_sgr(Vt *t, int param[], bool sub[], int pcount)
 {
 	Buffer *b = t->buffer;
 	if (pcount == 0) {
@@ -635,6 +638,10 @@ static void interpret_csi_sgr(Vt *t, int param[], int pcount)
 	}
 
 	for (int i = 0; i < pcount; i++) {
+		/* number of ':' separated sub-parameters, e.g. 38:2::r:g:b or 4:3 */
+		int nsub = 0;
+		while (i + 1 + nsub < pcount && sub[i + 1 + nsub])
+			nsub++;
 		switch (param[i]) {
 		case 0:
 			b->curattrs = A_NORMAL;
@@ -651,8 +658,11 @@ static void interpret_csi_sgr(Vt *t, int param[], int pcount)
 			b->curattrs |= A_ITALIC;
 			break;
 #endif
-		case 4:
-			b->curattrs |= A_UNDERLINE;
+		case 4: /* 4:0 turns underline off, other styles are drawn as plain underline */
+			if (nsub && param[i + 1] == 0)
+				b->curattrs &= ~A_UNDERLINE;
+			else
+				b->curattrs |= A_UNDERLINE;
 			break;
 		case 5:
 			b->curattrs |= A_BLINK;
@@ -687,17 +697,25 @@ static void interpret_csi_sgr(Vt *t, int param[], int pcount)
 			b->curfg = param[i] - 30;
 			break;
 		case 38:
-		case 48: {	/* extended fg/bg */
-			int *color = param[i] == 38 ? &b->curfg : &b->curbg;
-			if (i + 1 < pcount && param[i + 1] == 5) {
-				if (i + 2 < pcount && param[i + 2] < 256)
-					*color = param[i + 2];
-				i += 2;
-			} else if (i + 1 < pcount && param[i + 1] == 2) {
-				if (i + 4 < pcount && param[i + 2] < 256 && param[i + 3] < 256 && param[i + 4] < 256)
-					*color = RGB(param[i + 2], param[i + 3], param[i + 4]);
-				i += 4;
+		case 48:
+		case 58: {	/* extended fg/bg/underline color, the latter is ignored */
+			int ignored, *color = param[i] == 38 ? &b->curfg : param[i] == 48 ? &b->curbg : &ignored;
+			int *arg = param + i + 1, nargs = nsub;
+			if (!nsub) {
+				/* ';' separated form: 38;5;n or 38;2;r;g;b */
+				nargs = i + 1 < pcount && param[i + 1] == 5 ? 2 : i + 1 < pcount && param[i + 1] == 2 ? 4 : 0;
+				nargs = MIN(nargs, pcount - i - 1);
+				i += nargs;
+			} else if (nsub >= 5 && arg[0] == 2) {
+				/* 38:2:colorspace:r:g:b, drop the colorspace */
+				arg[1] = 2;
+				arg++;
+				nargs--;
 			}
+			if (nargs == 2 && arg[0] == 5 && arg[1] < 256)
+				*color = arg[1];
+			else if (nargs == 4 && arg[0] == 2 && arg[1] < 256 && arg[2] < 256 && arg[3] < 256)
+				*color = RGB(arg[1], arg[2], arg[3]);
 			break;
 		}
 		case 39:
@@ -718,6 +736,7 @@ static void interpret_csi_sgr(Vt *t, int param[], int pcount)
 		default:
 			break;
 		}
+		i += nsub;
 	}
 }
 
@@ -994,6 +1013,7 @@ static void interpret_csi(Vt *t)
 {
 	Buffer *b = t->buffer;
 	int csiparam[16];
+	bool csisub[16] = { false }; /* parameter is a ':' separated sub-parameter */
 	unsigned int param_count = 0;
 	const char *p = t->ebuf + 1;
 	char verb = t->ebuf[t->elen - 1];
@@ -1002,9 +1022,10 @@ static void interpret_csi(Vt *t)
 	for (p += (t->ebuf[1] == '?'); *p; p++) {
 		if (IS_CONTROL(*p)) {
 			process_nonprinting(t, *p);
-		} else if (*p == ';') {
+		} else if (*p == ';' || *p == ':') {
 			if (param_count >= LENGTH(csiparam))
 				return;	/* too long! */
+			csisub[param_count] = *p == ':';
 			csiparam[param_count++] = 0;
 		} else if (isdigit((unsigned char)*p)) {
 			if (param_count == 0)
@@ -1030,7 +1051,7 @@ static void interpret_csi(Vt *t)
 		interpret_csi_mode(t, csiparam, param_count, verb == 'h');
 		break;
 	case 'm': /* set attribute */
-		interpret_csi_sgr(t, csiparam, param_count);
+		interpret_csi_sgr(t, csiparam, csisub, param_count);
 		break;
 	case 'J': /* erase display */
 		interpret_csi_ed(t, csiparam, param_count);
@@ -1102,9 +1123,9 @@ static void interpret_csi(Vt *t)
 		if (param_count == 1 && csiparam[0] == 6)
 			send_curs(t);
 		break;
-	case 'c':
+	case 'c': /* primary device attributes, answer as a VT100 with advanced video */
 		if (t->ebuf[1] != '>' && t->ebuf[1] != '=' && (param_count == 0 || csiparam[0] == 0))
-			vt_write(t, "\e[?6c", 5);
+			vt_write(t, "[?1;2c", 7);
 		break;
 	default:
 		break;
@@ -1166,6 +1187,14 @@ static void interpret_osc(Vt *t)
 				t->title_handler(t, data+1);
 			break;
 		case 1: /* icon name */
+			break;
+		case 10: /* query default foreground color */
+		case 11: /* query default background color */
+			if (!strcmp(data + 1, "?") && reported_colors[command - 10][0]) {
+				char reply[96];
+				int len = snprintf(reply, sizeof reply, "\033]%d;%s\033\\", command, reported_colors[command - 10]);
+				vt_write(t, reply, len);
+			}
 			break;
 		default:
 #ifndef NDEBUG
@@ -1872,11 +1901,11 @@ static int color_convert(int color)
 {
 	if (color == -1)
 		return -1;
-	if (has_direct_colors) {
-		/* colors 0-7 remain the terminal's palette, move RGB values off them */
+	if (direct_palette) {
+		/* nudge RGB values which would be taken as palette colors */
 		if (color & COLOR_RGB)
-			return MAX(color & 0xffffff, 8);
-		return color < 8 ? color : color_to_rgb(color);
+			return (color & 0xffffff) < direct_palette ? (color & 0xffffff) | 0x100 : color & 0xffffff;
+		return color < direct_palette ? color : color_to_rgb(color);
 	}
 	if (color & COLOR_RGB)
 		return color_from_rgb(color & 0xffffff);
@@ -1928,7 +1957,17 @@ static void init_colors(void)
 	default_bg = bg == -1 ? COLOR_BLACK : bg;
 	has_default_colors = (use_default_colors() == OK);
 #ifdef HAVE_ALLOC_PAIR
-	has_direct_colors = COLORS >= COLOR_RGB && (tigetflag("RGB") > 0 || tigetnum("RGB") > 0);
+	direct_palette = 0;
+	if (COLORS >= COLOR_RGB && (tigetflag("RGB") > 0 || tigetnum("RGB") > 0)) {
+		/* find how many colors setaf still maps to the palette: 256, 16 or 8 */
+		const char *setaf = tigetstr("setaf");
+		for (direct_palette = 256; direct_palette > 8; direct_palette /= 16) {
+			const char *s = setaf && setaf != (char *)-1 ? tiparm(setaf, direct_palette - 1) : NULL;
+			if (s && !strstr(s, "8;2") && !strstr(s, "8:2"))
+				break;
+		}
+		direct_palette = MAX(direct_palette, 8);
+	}
 #else
 	pairs_used = 1;
 #endif
@@ -1944,6 +1983,12 @@ void vt_init(void)
 	if (!term)
 		term = "dvtm";
 	snprintf(vt_term, sizeof vt_term, "%s%s", term, COLORS >= 256 ? "-256color" : "");
+}
+
+void vt_default_colors_reported(const char *fg, const char *bg)
+{
+	snprintf(reported_colors[0], sizeof reported_colors[0], "%s", fg ? fg : "");
+	snprintf(reported_colors[1], sizeof reported_colors[1], "%s", bg ? bg : "");
 }
 
 void vt_keytable_set(const char * const keytable_overlay[], int count)
