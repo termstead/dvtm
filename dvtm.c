@@ -34,6 +34,13 @@
 #include <errno.h>
 #include <pwd.h>
 #include <termios.h>
+#if defined(__FreeBSD__)
+# include <sys/param.h>
+# include <sys/sysctl.h>
+# include <sys/user.h>
+#elif defined(__OpenBSD__)
+# include <sys/sysctl.h>
+#endif
 #include "vt.h"
 
 #ifdef PDCURSES
@@ -1146,9 +1153,28 @@ cleanup(void) {
 static char *getcwd_by_pid(Client *c) {
 	if (!c)
 		return NULL;
+#if defined(__FreeBSD__)
+	int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_CWD, c->pid };
+	struct kinfo_file kf;
+	size_t len = sizeof kf;
+	memset(&kf, 0, sizeof kf);
+	kf.kf_structsize = sizeof kf;
+	if (sysctl(mib, 4, &kf, &len, NULL, 0) == -1 || !kf.kf_path[0])
+		return NULL;
+	return strdup(kf.kf_path);
+#elif defined(__OpenBSD__)
+	int mib[3] = { CTL_KERN, KERN_PROC_CWD, c->pid };
+	char path[PATH_MAX];
+	size_t len = sizeof path;
+	if (sysctl(mib, 3, path, &len, NULL, 0) == -1)
+		return NULL;
+	path[sizeof path - 1] = '\0';
+	return strdup(path);
+#else
 	char buf[32];
 	snprintf(buf, sizeof buf, "/proc/%d/cwd", c->pid);
 	return realpath(buf, NULL);
+#endif
 }
 
 static void
