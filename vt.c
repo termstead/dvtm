@@ -1478,9 +1478,12 @@ int vt_process(Vt *t)
 
 void vt_default_colors_set(Vt *t, attr_t attrs, int fg, int bg)
 {
+	if (t->defattrs == attrs && t->deffg == fg && t->defbg == bg)
+		return;
 	t->defattrs = attrs;
 	t->deffg = fg;
 	t->defbg = bg;
+	vt_dirty(t);
 }
 
 Vt *vt_create(int rows, int cols, int scroll_size)
@@ -1561,14 +1564,11 @@ void vt_draw(Vt *t, WINDOW *win, int srow, int scol)
 			if (!prev_cell || cell->attr != prev_cell->attr
 			    || cell->fg != prev_cell->fg
 			    || cell->bg != prev_cell->bg) {
-				if (cell->attr == A_NORMAL)
-					cell->attr = t->defattrs;
-				if (cell->fg == -1)
-					cell->fg = t->deffg;
-				if (cell->bg == -1)
-					cell->bg = t->defbg;
-				int pair = vt_color_get(t, cell->fg, cell->bg);
-				wattr_set(win, cell->attr << NCURSES_ATTR_SHIFT, pair, PAIR_OPTS(pair));
+				attr_t attr = cell->attr == A_NORMAL ? t->defattrs : cell->attr;
+				int fg = cell->fg == -1 ? t->deffg : cell->fg;
+				int bg = cell->bg == -1 ? t->defbg : cell->bg;
+				int pair = vt_color_get(t, fg, bg);
+				wattr_set(win, attr << NCURSES_ATTR_SHIFT, pair, PAIR_OPTS(pair));
 			}
 
 			if (is_utf8 && cell->text >= 128) {
