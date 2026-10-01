@@ -10,8 +10,13 @@ DEBUG_CFLAGS = ${CFLAGS} -UNDEBUG -O0 -g -ggdb -Wall -Wextra -Wno-unused-paramet
 
 all: dvtm dvtm-editor
 
-config.h:
-	cp config.def.h config.h
+config.h: config.def.h
+	@if [ -e $@ ]; then \
+		echo "warning: $< is newer than $@, review the changes and merge them into $@ or delete $@ to regenerate it" >&2; \
+	else \
+		echo "cp $< $@"; \
+		cp $< $@; \
+	fi
 
 dvtm: config.h config.mk *.c *.h
 	${CC} ${CFLAGS} ${SRC} ${LDFLAGS} ${LIBS} -o $@
