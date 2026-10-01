@@ -16,7 +16,7 @@
 #include <wchar.h>
 #include <limits.h>
 #include <libgen.h>
-#include <sys/select.h>
+#include <poll.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
@@ -82,6 +82,7 @@ struct Client {
 	Client *prev;
 	Client *snext;
 	unsigned int tags;
+	int pollidx;
 };
 
 typedef struct {
@@ -246,6 +247,7 @@ static CmdFifo cmdfifo = { .fd = -1 };
 static const char *shell;
 static Register copyreg;
 static volatile sig_atomic_t running = true;
+static int sigpipe[2] = { -1, -1 };
 static bool runinall = false;
 
 static void
@@ -706,6 +708,16 @@ get_client_by_coord(unsigned int x, unsigned int y) {
 }
 
 static void
+sigwake(void) {
+	int errsv = errno;
+	char b = 0;
+	ssize_t r = write(sigpipe[1], &b, 1);
+
+	(void)r;
+	errno = errsv;
+}
+
+static void
 sigchld_handler(int sig) {
 	int errsv = errno;
 	int status;
@@ -736,16 +748,36 @@ sigchld_handler(int sig) {
 	}
 
 	errno = errsv;
+	sigwake();
 }
 
 static void
 sigwinch_handler(int sig) {
 	screen.need_resize = true;
+	sigwake();
 }
 
 static void
 sigterm_handler(int sig) {
 	running = false;
+	sigwake();
+}
+
+static void
+sigpipe_init(void) {
+	if (pipe(sigpipe) == -1)
+		eprint("pipe: %s\n", strerror(errno));
+	for (int i = 0; i < 2; i++) {
+		fcntl(sigpipe[i], F_SETFD, FD_CLOEXEC);
+		fcntl(sigpipe[i], F_SETFL, fcntl(sigpipe[i], F_GETFL) | O_NONBLOCK);
+	}
+}
+
+static void
+sigpipe_drain(void) {
+	char buf[64];
+
+	while (read(sigpipe[0], buf, sizeof buf) > 0);
 }
 
 static void
@@ -965,10 +997,8 @@ querycolors(void) {
 	size_t len = 0;
 	if (write(STDOUT_FILENO, query, sizeof query - 1) == sizeof query - 1) {
 		for (;;) {
-			fd_set rd;
-			FD_ZERO(&rd);
-			FD_SET(STDIN_FILENO, &rd);
-			if (select(STDIN_FILENO + 1, &rd, NULL, NULL, &(struct timeval){ .tv_usec = 500000 }) <= 0)
+			struct pollfd pfd = { .fd = STDIN_FILENO, .events = POLLIN };
+			if (poll(&pfd, 1, 500) <= 0)
 				break;
 			ssize_t n = read(STDIN_FILENO, buf + len, sizeof buf - 1 - len);
 			if (n <= 0)
@@ -1907,41 +1937,41 @@ int
 main(int argc, char *argv[]) {
 	unsigned int key_index = 0;
 	memset(keys, 0, sizeof(keys));
-	sigset_t emptyset, blockset;
 
+	sigpipe_init();
 	setenv("DVTM", VERSION, 1);
 	if (!parse_args(argc, argv)) {
 		setup();
 		startup(NULL);
 	}
 
-	sigemptyset(&emptyset);
-	sigemptyset(&blockset);
-	sigaddset(&blockset, SIGWINCH);
-	sigaddset(&blockset, SIGCHLD);
-	sigprocmask(SIG_BLOCK, &blockset, NULL);
+	struct pollfd *pfds = NULL;
+	size_t pfds_cap = 0;
 
 	while (running) {
-		int r, nfds = 0;
-		fd_set rd;
+		int r;
+		size_t nfds = 0;
 
 		if (screen.need_resize) {
 			resize_screen();
 			screen.need_resize = false;
 		}
 
-		FD_ZERO(&rd);
-		FD_SET(STDIN_FILENO, &rd);
-
-		if (cmdfifo.fd != -1) {
-			FD_SET(cmdfifo.fd, &rd);
-			nfds = cmdfifo.fd;
+		size_t need = 4;
+		for (Client *c = clients; c; c = c->next)
+			need++;
+		if (need > pfds_cap) {
+			struct pollfd *p = realloc(pfds, need * sizeof *pfds);
+			if (!p)
+				eprint("realloc: %s\n", strerror(errno));
+			pfds = p;
+			pfds_cap = need;
 		}
 
-		if (bar.fd != -1) {
-			FD_SET(bar.fd, &rd);
-			nfds = MAX(nfds, bar.fd);
-		}
+		pfds[nfds++] = (struct pollfd){ .fd = STDIN_FILENO, .events = POLLIN };
+		pfds[nfds++] = (struct pollfd){ .fd = sigpipe[0], .events = POLLIN };
+		pfds[nfds++] = (struct pollfd){ .fd = cmdfifo.fd, .events = POLLIN };
+		pfds[nfds++] = (struct pollfd){ .fd = bar.fd, .events = POLLIN };
 
 		for (Client *c = clients; c; ) {
 			if (c->editor && c->editor_died)
@@ -1953,22 +1983,25 @@ main(int argc, char *argv[]) {
 				continue;
 			}
 			int pty = c->editor ? vt_pty_get(c->editor) : vt_pty_get(c->app);
-			FD_SET(pty, &rd);
-			nfds = MAX(nfds, pty);
+			c->pollidx = nfds;
+			pfds[nfds++] = (struct pollfd){ .fd = pty, .events = POLLIN };
 			c = c->next;
 		}
 
 		doupdate();
-		r = pselect(nfds + 1, &rd, NULL, NULL, NULL, &emptyset);
+		r = poll(pfds, nfds, -1);
 
 		if (r < 0) {
 			if (errno == EINTR)
 				continue;
-			perror("select()");
+			perror("poll()");
 			exit(EXIT_FAILURE);
 		}
 
-		if (FD_ISSET(STDIN_FILENO, &rd)) {
+		if (pfds[1].revents)
+			sigpipe_drain();
+
+		if (pfds[0].revents) {
 			int code = getch();
 			if (code >= 0) {
 				keys[key_index++] = code;
@@ -1998,14 +2031,14 @@ main(int argc, char *argv[]) {
 				continue;
 		}
 
-		if (cmdfifo.fd != -1 && FD_ISSET(cmdfifo.fd, &rd))
+		if (cmdfifo.fd != -1 && pfds[2].revents)
 			handle_cmdfifo();
 
-		if (bar.fd != -1 && FD_ISSET(bar.fd, &rd))
+		if (bar.fd != -1 && pfds[3].revents)
 			handle_statusbar();
 
 		for (Client *c = clients; c; c = c->next) {
-			if (FD_ISSET(vt_pty_get(c->term), &rd)) {
+			if (c->pollidx && pfds[c->pollidx].fd == vt_pty_get(c->term) && pfds[c->pollidx].revents) {
 				if (vt_process(c->term) < 0 && errno == EIO) {
 					if (c->editor)
 						c->editor_died = true;
