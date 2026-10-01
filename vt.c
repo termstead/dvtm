@@ -41,6 +41,7 @@
 #endif
 
 #include "vt.h"
+#include "wcwidth_table.h"
 
 #ifdef _AIX
 # include "forkpty-aix.c"
@@ -1132,6 +1133,35 @@ static void interpret_csi(Vt *t)
 	}
 }
 
+static bool in_ranges(const WidthRange *r, size_t n, unsigned int c)
+{
+	size_t lo = 0, hi = n;
+	while (lo < hi) {
+		size_t mid = lo + (hi - lo) / 2;
+		if (c < r[mid].lo)
+			hi = mid;
+		else if (c > r[mid].hi)
+			lo = mid + 1;
+		else
+			return true;
+	}
+	return false;
+}
+
+int vt_wcwidth(wchar_t wc)
+{
+	unsigned int c = wc;
+	if (c < 0x20 || (c >= 0x7f && c < 0xa0))
+		return c ? -1 : 0;
+	if (c < 0x300)
+		return 1;
+	if (in_ranges(wcwidth_zero, sizeof wcwidth_zero / sizeof *wcwidth_zero, c))
+		return 0;
+	if (in_ranges(wcwidth_wide, sizeof wcwidth_wide / sizeof *wcwidth_wide, c))
+		return 2;
+	return 1;
+}
+
 /* Interpret an 'index' (IND) sequence */
 static void interpret_csi_ind(Vt *t)
 {
@@ -1402,7 +1432,7 @@ static void put_wc(Vt *t, wchar_t wc)
 					wc = gc;
 			}
 			width = 1;
-		} else if ((width = wcwidth(wc)) < 1) {
+		} else if ((width = vt_wcwidth(wc)) < 1) {
 			width = 1;
 		}
 		Buffer *b = t->buffer;
@@ -1576,7 +1606,7 @@ void vt_draw(Vt *t, WINDOW *win, int srow, int scol)
 				size_t len = wcrtomb(buf, cell->text, NULL);
 				if (len != (size_t)-1) {
 					waddnstr(win, buf, len);
-					if (wcwidth(cell->text) > 1)
+					if (vt_wcwidth(cell->text) > 1)
 						j++;
 				}
 			} else {

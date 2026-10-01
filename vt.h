@@ -21,6 +21,7 @@
 #include <curses.h>
 #include <stdbool.h>
 #include <sys/types.h>
+#include <wchar.h>
 
 #ifndef NCURSES_MOUSE_VERSION
 #define mmask_t unsigned long
@@ -56,6 +57,7 @@ void vt_dirty(Vt*);
 void vt_draw(Vt*, WINDOW *win, int startrow, int startcol);
 int vt_color_get(Vt*, int fg, int bg);
 int vt_color_reserve(int fg, int bg);
+int vt_wcwidth(wchar_t wc);
 
 void vt_scroll(Vt*, int rows);
 void vt_noscroll(Vt*);

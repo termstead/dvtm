@@ -164,6 +164,25 @@ static void test_device_attributes(void)
 	}
 }
 
+static void test_wcwidth(void)
+{
+	term = "WCWIDTH";
+	CHECK(vt_wcwidth(L'a') == 1);
+	CHECK(vt_wcwidth(L'\0') == 0);
+	CHECK(vt_wcwidth(L'\n') == -1);
+	CHECK(vt_wcwidth(0x4E2D) == 2);
+	CHECK(vt_wcwidth(0x1F600) == 2);
+	CHECK(vt_wcwidth(0x1FAE9) == 2);
+	CHECK(vt_wcwidth(0x0301) == 0);
+	CHECK(vt_wcwidth(0x200D) == 0);
+	CHECK(vt_wcwidth(0x00E9) == 1);
+
+	Vt *t = vt_create(3, 10, 0);
+	feed(t, "\xf0\x9f\xab\xa9x");
+	CHECK(t->buffer->curs_col == 3);
+	vt_destroy(t);
+}
+
 int main(void)
 {
 	setlocale(LC_CTYPE, "C.UTF-8");
@@ -191,6 +210,7 @@ int main(void)
 	setenv("TERMINFO", dir, 1);
 
 	test_device_attributes();
+	test_wcwidth();
 	test_term("xterm", COLOR_RED, COLOR_RED, COLOR_BLACK, COLOR_BLACK);
 	test_term("xterm-256color", 196, 196, 16, 16);
 	if (direct) {

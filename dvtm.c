@@ -379,13 +379,21 @@ drawbar(void) {
 	wchar_t wbuf[sizeof bar.text];
 	size_t numchars = mbstowcs(wbuf, bar.text, sizeof bar.text);
 
-	if (numchars != (size_t)-1 && (width = wcswidth(wbuf, maxwidth)) != -1) {
+	width = 0;
+	for (size_t i = 0; numchars != (size_t)-1 && i < numchars && width != -1; i++) {
+		int w = vt_wcwidth(wbuf[i]);
+		width = w < 0 ? -1 : width + w;
+		if (width > maxwidth)
+			break;
+	}
+
+	if (numchars != (size_t)-1 && width != -1) {
 		int pos;
 		for (pos = 0; pos + width < maxwidth; pos++)
 			addch(' ');
 
 		for (size_t i = 0; i < numchars; i++) {
-			pos += wcwidth(wbuf[i]);
+			pos += vt_wcwidth(wbuf[i]);
 			if (pos > maxwidth)
 				break;
 			addnwstr(wbuf+i, 1);
