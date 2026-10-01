@@ -37,6 +37,22 @@ jobs:
       - run: make
       - run: make test-terminals
 
+  esctest:
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libncurses-dev python3-pexpect
+      - run: make
+      - run: git clone https://github.com/ThomasDickey/esctest2.git "$RUNNER_TEMP/esctest2"
+      - run: python3 test/run_esctest.py "$RUNNER_TEMP/esctest2" | tee esctest.txt
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: esctest
+          path: esctest.txt
+
   fuzz:
     runs-on: ubuntu-24.04
     steps:
