@@ -117,6 +117,20 @@ class DvtmTest(unittest.TestCase):
         self.p.expect_exact('title-x')
         self.p.expect_exact('from-42')
 
+    def test_cmd_fifo_split_writes(self):
+        fd = os.open(self.cmdfifo, os.O_WRONLY)
+        os.write(fd, b"create 'echo split-$((6*7)); sleep 60' ti")
+        time.sleep(0.5)
+        os.write(fd, b"tle-y\n")
+        os.close(fd)
+        self.p.expect_exact('title-y')
+        self.p.expect_exact('split-42')
+
+    def test_cmd_fifo_long_input(self):
+        with open(self.cmdfifo, 'w') as f:
+            f.write("create 'echo ok-$((6*7)); sleep 60' " + 'x' * 600 + '\n')
+        self.p.expect_exact('ok-42')
+
     def test_status_fifo(self):
         with open(self.status, 'w') as f:
             f.write('hello-status\n')

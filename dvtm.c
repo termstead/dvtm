@@ -1657,19 +1657,10 @@ get_cmd_by_name(const char *name) {
 }
 
 static void
-handle_cmdfifo(void) {
-	int r;
-	char *p, *s, cmdbuf[512], c;
+process_cmdbuf(char *p) {
+	char *s, c;
 	Cmd *cmd;
 
-	r = read(cmdfifo.fd, cmdbuf, sizeof cmdbuf - 1);
-	if (r <= 0) {
-		cmdfifo.fd = -1;
-		return;
-	}
-
-	cmdbuf[r] = '\0';
-	p = cmdbuf;
 	while (*p) {
 		/* find the command name */
 		for (; *p == ' ' || *p == '\n'; p++);
@@ -1749,6 +1740,51 @@ handle_cmdfifo(void) {
 			}
 		}
 	}
+}
+
+static void
+handle_cmdfifo(void) {
+	static char buf[4096];
+	static size_t len;
+	static bool skipping;
+	ssize_t r;
+	size_t end;
+
+	r = read(cmdfifo.fd, buf + len, sizeof buf - 1 - len);
+	if (r < 0 && (errno == EINTR || errno == EAGAIN))
+		return;
+	if (r <= 0) {
+		cmdfifo.fd = -1;
+		return;
+	}
+	len += r;
+
+	if (skipping) {
+		char *nl = memchr(buf, '\n', len);
+		if (!nl) {
+			len = 0;
+			return;
+		}
+		len -= nl + 1 - buf;
+		memmove(buf, nl + 1, len);
+		skipping = false;
+	}
+
+	for (end = len; end > 0 && buf[end - 1] != '\n'; end--);
+	if (!end) {
+		if (len == sizeof buf - 1) {
+			len = 0;
+			skipping = true;
+		}
+		return;
+	}
+
+	char next = buf[end];
+	buf[end] = '\0';
+	process_cmdbuf(buf);
+	buf[end] = next;
+	memmove(buf, buf + end, len - end);
+	len -= end;
 }
 
 static void
