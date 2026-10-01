@@ -164,6 +164,27 @@ static void test_device_attributes(void)
 	}
 }
 
+static void test_text_area_size(void)
+{
+	term = "XTWINOPS";
+	int fds[2];
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds))
+		abort();
+	Vt *t = vt_create(5, 10, 0);
+	t->pty = fds[0];
+	const char *query = "\033[18t\033[14t";
+	if (write(fds[1], query, strlen(query)) != (ssize_t)strlen(query))
+		abort();
+	vt_process(t);
+	fcntl(fds[1], F_SETFL, O_NONBLOCK);
+	char buf[32] = "";
+	ssize_t len = read(fds[1], buf, sizeof buf - 1);
+	buf[len > 0 ? len : 0] = '\0';
+	CHECK(!strcmp(buf, "\033[8;5;10t"));
+	close(fds[1]);
+	vt_destroy(t);
+}
+
 int main(void)
 {
 	setlocale(LC_CTYPE, "C.UTF-8");
@@ -191,6 +212,7 @@ int main(void)
 	setenv("TERMINFO", dir, 1);
 
 	test_device_attributes();
+	test_text_area_size();
 	test_term("xterm", COLOR_RED, COLOR_RED, COLOR_BLACK, COLOR_BLACK);
 	test_term("xterm-256color", 196, 196, 16, 16);
 	if (direct) {
