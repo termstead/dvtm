@@ -114,6 +114,23 @@ static void test_term(const char *name, int red, int palette196, int rgb123, int
 	extended_pair_content(reserved, &fg, &bg);
 	CHECK(fg == COLOR_BLUE && bg == -1);
 	CHECK(vt_color_reserve(COLOR_BLUE, -1) == reserved);
+	vt_destroy(t);
+
+	/* default colors are applied when drawing, not stored in the cells */
+	t = vt_create(2, 80, 0);
+	vt_default_colors_set(t, A_NORMAL, COLOR_GREEN, -1);
+	feed(t, "a\033[31mb");
+	drawn(0, &fg, &bg);
+	CHECK(fg == COLOR_GREEN);
+	CHECK(strstr(content(t), "\033[39m\033[49ma"));
+
+	/* new defaults, e.g. from a color rule after a title change, apply to existing text */
+	vt_default_colors_set(t, A_NORMAL, COLOR_BLUE, -1);
+	vt_draw(t, pad, 0, 0);
+	drawn(0, &fg, &bg);
+	CHECK(fg == COLOR_BLUE);
+	drawn(1, &fg, &bg);
+	CHECK(fg == COLOR_RED);
 
 	vt_destroy(t);
 	delwin(pad);
