@@ -1926,8 +1926,43 @@ static void
 usage(void) {
 	cleanup();
 	eprint("usage: dvtm [-v] [-M] [-m mod] [-d delay] [-h lines] [-t title] "
-	       "[-s status-fifo] [-c cmd-fifo] [cmd...]\n");
+	       "[-s status-fifo] [-c cmd-fifo] [cmd...]\n"
+	       "try 'dvtm -h' for more information\n");
 	exit(EXIT_FAILURE);
+}
+
+static void
+help(void) {
+	cleanup();
+	puts("usage: dvtm [options] [cmd...]\n"
+	     "\n"
+	     "Each cmd is started in its own window; without any, $SHELL is used.\n"
+	     "\n"
+	     "options:\n"
+	     "  -v              print version and exit\n"
+	     "  -h              print this help and exit\n"
+	     "  -m mod          command prefix key, e.g. ^b (default ^g)\n"
+	     "  -M              toggle mouse support\n"
+	     "  -d delay        ESC delay in ms, 50-1000 (default 100)\n"
+	     "  -h lines        scrollback history size in lines\n"
+	     "  -t title        terminal title\n"
+	     "  -s status-fifo  FIFO to read status bar text from\n"
+	     "  -c cmd-fifo     FIFO to read dvtm commands from ($DVTM_CMD_FIFO)\n"
+	     "\n"
+	     "keys (prefix = mod):\n"
+	     "  mod c / x x     new window / close window\n"
+	     "  mod j k         focus next / previous window\n"
+	     "  mod h l         shrink / grow master area\n"
+	     "  mod f g b m     tile, grid, bottom stack, fullscreen layout\n"
+	     "  mod Enter       zoom window into master area\n"
+	     "  mod 1..9        focus window by number\n"
+	     "  mod v N         view tag N (mod t N moves window to tag N)\n"
+	     "  mod e / PgUp    copy mode / scroll back\n"
+	     "  mod ?           open the manual\n"
+	     "  mod q q         quit\n"
+	     "\n"
+	     "see dvtm(1) for the full list of keys and commands.");
+	exit(EXIT_SUCCESS);
 }
 
 static bool
@@ -1949,6 +1984,9 @@ parse_args(int argc, char *argv[]) {
 			create(args);
 			continue;
 		}
+		if (!strcmp(argv[arg], "--help") ||
+		    (argv[arg][1] == 'h' && (arg + 1) >= argc))
+			help();
 		if (argv[arg][1] != 'v' && argv[arg][1] != 'M' && (arg + 1) >= argc)
 			usage();
 		switch (argv[arg][1]) {
