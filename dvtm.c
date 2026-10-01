@@ -112,7 +112,7 @@ typedef struct {
 
 typedef struct {
 	void (*cmd)(const char *args[]);
-	const char *args[3];
+	const char *args[MAX_ARGS];
 } Action;
 
 #define MAX_KEYS 3
