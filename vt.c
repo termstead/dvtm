@@ -1123,6 +1123,13 @@ static void interpret_csi(Vt *t)
 		if (param_count == 1 && csiparam[0] == 6)
 			send_curs(t);
 		break;
+	case 't': /* report text area size in characters */
+		if (param_count == 1 && csiparam[0] == 18) {
+			char reply[32];
+			snprintf(reply, sizeof reply, "\e[8;%d;%dt", t->buffer->rows, t->buffer->cols);
+			vt_write(t, reply, strlen(reply));
+		}
+		break;
 	case 'c': /* primary device attributes, answer as a VT100 with advanced video */
 		if (t->ebuf[1] != '>' && t->ebuf[1] != '=' && (param_count == 0 || csiparam[0] == 0))
 			vt_write(t, "[?1;2c", 7);
