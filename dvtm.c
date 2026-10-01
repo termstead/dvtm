@@ -1817,9 +1817,14 @@ handle_editor(Client *c) {
 		copyreg.len += len;
 		if (copyreg.len == copyreg.size) {
 			copyreg.size *= 2;
-			if (!(copyreg.data = realloc(copyreg.data, copyreg.size))) {
+			char *data = realloc(copyreg.data, copyreg.size);
+			if (!data) {
+				free(copyreg.data);
+				copyreg.data = NULL;
 				copyreg.size = 0;
 				copyreg.len = 0;
+			} else {
+				copyreg.data = data;
 			}
 		}
 	}
