@@ -22,10 +22,6 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-#ifndef NCURSES_MOUSE_VERSION
-#define mmask_t unsigned long
-#endif
-
 typedef struct Vt Vt;
 typedef void (*vt_title_handler_t)(Vt*, const char *title);
 typedef void (*vt_urgent_handler_t)(Vt*);
@@ -51,7 +47,6 @@ bool vt_cursor_visible(Vt*);
 int vt_process(Vt *);
 void vt_keypress(Vt *, int keycode);
 ssize_t vt_write(Vt*, const char *buf, size_t len);
-void vt_mouse(Vt*, int x, int y, mmask_t mask);
 void vt_dirty(Vt*);
 void vt_draw(Vt*, WINDOW *win, int startrow, int startcol);
 int vt_color_get(Vt*, int fg, int bg);

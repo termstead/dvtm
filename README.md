@@ -174,16 +174,6 @@ Detach using `CTRL-\` and later reattach with
 
     $ abduco -a dvtm-session
 
-### Copy / Paste does not work under X
-
-If you have mouse support enabled, which is the case with the
-default settings, you need to hold down shift while selecting
-and inserting text. In case you don't like this behaviour either
-run dvtm with the `-M` command line argument, disable it at run
-time with `MOD+M` or modify `config.def.h` to disable it completely
-at compile time. You will however no longer be able to perform
-other mouse actions like selecting windows etc.
-
 ### How to change the key bindings?
 
 The configuration of dvtm is done by creating a custom `config.h`

@@ -184,7 +184,6 @@ struct Vt {
 	unsigned curskeymode:1;
 	unsigned bell:1;
 	unsigned relposmode:1;
-	unsigned mousetrack:1;
 	unsigned graphmode:1;
 	unsigned savgraphmode:1;
 	bool charsets[2];
@@ -1002,9 +1001,6 @@ static void interpret_csi_priv_mode(Vt *t, int param[], int pcount, bool set)
 			else
 				cursor_restore(t);
 			break;
-		case 1000: /* enable/disable normal mouse tracking */
-			t->mousetrack = set;
-			break;
 		}
 	}
 }
@@ -1766,45 +1762,6 @@ void vt_keypress(Vt *t, int keycode)
 		fprintf(stderr, "unhandled key %#o\n", keycode);
 #endif
 	}
-}
-
-void vt_mouse(Vt *t, int x, int y, mmask_t mask)
-{
-#ifdef NCURSES_MOUSE_VERSION
-	char seq[6] = { '\e', '[', 'M' }, state = 0, button = 0;
-
-	if (!t->mousetrack)
-		return;
-
-	if (mask & (BUTTON1_PRESSED | BUTTON1_CLICKED))
-		button = 0;
-	else if (mask & (BUTTON2_PRESSED | BUTTON2_CLICKED))
-		button = 1;
-	else if (mask & (BUTTON3_PRESSED | BUTTON3_CLICKED))
-		button = 2;
-	else if (mask & (BUTTON1_RELEASED | BUTTON2_RELEASED | BUTTON3_RELEASED))
-		button = 3;
-
-	if (mask & BUTTON_SHIFT)
-		state |= 4;
-	if (mask & BUTTON_ALT)
-		state |= 8;
-	if (mask & BUTTON_CTRL)
-		state |= 16;
-
-	seq[3] = 32 + button + state;
-	seq[4] = 32 + x;
-	seq[5] = 32 + y;
-
-	vt_write(t, seq, sizeof seq);
-
-	if (mask & (BUTTON1_CLICKED | BUTTON2_CLICKED | BUTTON3_CLICKED)) {
-		/* send a button release event */
-		button = 3;
-		seq[3] = 32 + button + state;
-		vt_write(t, seq, sizeof seq);
-	}
-#endif /* NCURSES_MOUSE_VERSION */
 }
 
 #ifndef HAVE_ALLOC_PAIR
