@@ -99,7 +99,6 @@ static KeyBinding bindings[] = {
 	{ { MOD, '.',          }, { toggleminimize, { NULL }                    } },
 	{ { MOD, 's',          }, { togglebar,      { NULL }                    } },
 	{ { MOD, 'S',          }, { togglebarpos,   { NULL }                    } },
-	{ { MOD, 'M',          }, { togglemouse,    { NULL }                    } },
 	{ { MOD, '\n',         }, { zoom ,          { NULL }                    } },
 	{ { MOD, '\r',         }, { zoom ,          { NULL }                    } },
 	{ { MOD, '1',          }, { focusn,         { "1" }                     } },
@@ -145,50 +144,6 @@ static KeyBinding bindings[] = {
 static const ColorRule colorrules[] = {
 	{ "", A_NORMAL, &colors[DEFAULT] }, /* default */
 };
-
-/* possible values for the mouse buttons are listed below:
- *
- * BUTTON1_PRESSED          mouse button 1 down
- * BUTTON1_RELEASED         mouse button 1 up
- * BUTTON1_CLICKED          mouse button 1 clicked
- * BUTTON1_DOUBLE_CLICKED   mouse button 1 double clicked
- * BUTTON1_TRIPLE_CLICKED   mouse button 1 triple clicked
- * BUTTON2_PRESSED          mouse button 2 down
- * BUTTON2_RELEASED         mouse button 2 up
- * BUTTON2_CLICKED          mouse button 2 clicked
- * BUTTON2_DOUBLE_CLICKED   mouse button 2 double clicked
- * BUTTON2_TRIPLE_CLICKED   mouse button 2 triple clicked
- * BUTTON3_PRESSED          mouse button 3 down
- * BUTTON3_RELEASED         mouse button 3 up
- * BUTTON3_CLICKED          mouse button 3 clicked
- * BUTTON3_DOUBLE_CLICKED   mouse button 3 double clicked
- * BUTTON3_TRIPLE_CLICKED   mouse button 3 triple clicked
- * BUTTON4_PRESSED          mouse button 4 down
- * BUTTON4_RELEASED         mouse button 4 up
- * BUTTON4_CLICKED          mouse button 4 clicked
- * BUTTON4_DOUBLE_CLICKED   mouse button 4 double clicked
- * BUTTON4_TRIPLE_CLICKED   mouse button 4 triple clicked
- * BUTTON_SHIFT             shift was down during button state change
- * BUTTON_CTRL              control was down during button state change
- * BUTTON_ALT               alt was down during button state change
- * ALL_MOUSE_EVENTS         report all button state changes
- * REPORT_MOUSE_POSITION    report mouse movement
- */
-
-#ifdef NCURSES_MOUSE_VERSION
-# define CONFIG_MOUSE /* compile in mouse support if we build against ncurses */
-#endif
-
-#define ENABLE_MOUSE true /* whether to enable mouse events by default */
-
-#ifdef CONFIG_MOUSE
-static Button buttons[] = {
-	{ BUTTON1_CLICKED,        { mouse_focus,      { NULL  } } },
-	{ BUTTON1_DOUBLE_CLICKED, { mouse_fullscreen, { "[ ]" } } },
-	{ BUTTON2_CLICKED,        { mouse_zoom,       { NULL  } } },
-	{ BUTTON3_CLICKED,        { mouse_minimize,   { NULL  } } },
-};
-#endif /* CONFIG_MOUSE */
 
 static Cmd commands[] = {
 	/* create [cmd]: create a new window, run `cmd` in the shell if specified */

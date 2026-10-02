@@ -32,10 +32,6 @@ console based applications.
 .It Fl v
 Print version information to standard output and exit.
 .
-.It Fl M
-Toggle default mouse grabbing upon startup. Use this to allow normal mouse operation
-under X.
-.
 .It Fl m Ar modifier
 Set command modifier at runtime.
 .
@@ -177,9 +173,6 @@ Redraw whole screen.
 Toggle keyboard multiplexing mode, if activated keypresses are sent to all
 visible windows.
 .
-.It Ic Mod-M
-Toggle dvtm mouse grabbing.
-.
 .It Ic Mod-e
 Enter copy mode (see section below for further information).
 .
@@ -216,33 +209,6 @@ Add/remove nth tag to/from focused window.
 .
 .It Ic Mod-q-q
 Quit dvtm.
-.El
-.
-.
-.Ss Mouse commands
-.
-By default dvtm captures mouse events to provide the actions listed below.
-Unfortunately this interferes with the standard X copy and paste mechanism.
-To work around this you need to hold down
-.Ic Shift
-while selecting or pasting text.
-Alternatively you can disable mouse support at compile time, start dvtm with the
-.Fl M
-flag or toggle mouse support during runtime with
-.Ic Mod-M .
-.
-.Bl -tag -width 8
-.It Ic Button1 click
-Focus window.
-.
-.It Ic Button1 double click
-Focus window and toggle maximization.
-.
-.It Ic Button2 click
-Zoom/cycle current window to/from master area.
-.
-.It Ic Button3 click
-Toggle minimization of current window.
 .El
 .
 .
